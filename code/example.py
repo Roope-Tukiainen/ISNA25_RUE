@@ -172,7 +172,7 @@ def createCommunities(G: Graph, path, rng_seed=55):
     communities = list(communities)
     colors = plt.cm.get_cmap("tab20", len(communities))
     csv_path = path + "info.csv"
-    with open(csv_path, "w") as file:
+    with open(csv_path, "w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(["community", "size", "rgba"])
 
