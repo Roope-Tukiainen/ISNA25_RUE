@@ -167,12 +167,12 @@ def drawGraph(G: Graph, title=""):
     plt.show()
 
 def createCommunities(G: Graph, path, rng_seed=55):
-    communities = nx.algorithms.community.louvain_communities(G, seed=rng_seed)
+    communities = nx.algorithms.community.louvain_communities(G, weight="weigth", seed=rng_seed)
     print("Communities to list")
     communities = list(communities)
     colors = plt.cm.get_cmap("tab20", len(communities))
     csv_path = path + "info.csv"
-    with open(csv_path, "w", newline="") as file:
+    with open(csv_path, "w", newline="n") as file:
         writer = csv.writer(file)
         writer.writerow(["community", "size", "rgba"])
 
