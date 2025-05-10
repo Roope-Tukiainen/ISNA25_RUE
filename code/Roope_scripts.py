@@ -1,7 +1,6 @@
 
 from collections import Counter
 import time
-from matplotlib import figure
 import networkx as nx
 from networkx import Graph
 import igraph as ig
@@ -13,6 +12,7 @@ import os
 from pathlib import Path
 import ast
 import numpy as np
+import pandas as pd
 import powerlaw
 
 POS_ATTR = "pos"
@@ -757,32 +757,49 @@ def visualize_network_bkp(G: Graph, output_file: str):
     plt.savefig(output_file, dpi=300)
 
 
-def create_community_statistics_table(community: Graph):
+def create_community_statistics_table(communities: list[Graph], community_dir: str, output_file: str):
     """Create a table showing key statistics for each community"""
     print("Creating community statistics table...")
+
+
     # Prepare data for the table
     table_data = []
 
-    for community_id, stats in community_stats.items():
-        # Skip communities with missing key data
-        if any(stats.get(k) is None for k in ['members', 'edges', 'density', 'clustering_coefficient']):
-            continue
+    for i, comm in enumerate(communities):
+        id = i + 1
+        num_nodes = len(list(comm.nodes()))
+        num_edges = len(list(comm.edges()))
+        density = (2*num_edges) / (num_nodes*(num_nodes-1))
+        
+        avg_degree_centrality = -1
+        global_transitivity = -1
+        avg_path_length = -1
+        with open(f"{community_dir}{id}.csv") as file:
+            reader = csv.reader(file)
+            #skip header
+            next(reader)
+            row = next(reader)
+            avg_degree_centrality = float(row[3])
+            global_transitivity = float(row[5])
+            avg_path_length = float(row[4])
 
+        cluster_coefficients = list(nx.get_node_attributes(comm, CLUSTER_ATTR).values())
+        avg_cluster = np.mean(cluster_coefficients)
         row = {
-            'Community': community_id,
-            'Vertices': stats['members'],
-            'Edges': stats['edges'],
-            'Density': stats['density'],
-            'Clustering Coefficient': stats['clustering_coefficient'],
-            'Global Transitivity': stats['global_transitivity'],
-            'Avg Degree Centrality': stats['avg_degree_centrality'],
-            'Avg Path Length': stats.get('avg_path_length', 'N/A')
+            'Community': id,
+            'Vertices': num_nodes,
+            'Edges': num_edges,
+            'Density': density,
+            'Average clustering Coefficient': avg_cluster,
+            'Global Transitivity': global_transitivity,
+            'Avg Degree Centrality': avg_degree_centrality,
+            'Avg Path Length': avg_path_length
         }
         table_data.append(row)
 
     # Create DataFrame and save as CSV
     stats_df = pd.DataFrame(table_data)
-    stats_df.to_csv('community_statistics_table.csv', index=False)
+    stats_df.to_csv('uswah_community_statistics_table.csv', index=False)
 
     # Also create a visual table using matplotlib for the report
     plt.figure(figsize=(12, len(table_data) * 0.5 + 2))
@@ -791,14 +808,14 @@ def create_community_statistics_table(community: Graph):
     cell_text = []
     for _, row in stats_df.iterrows():
         cell_text.append([
-            row['Community'],
-            f"{row['Vertices']:,}",
-            f"{row['Edges']:,}",
+            int(row['Community']),
+            int(row['Vertices']),
+            int(row['Edges']),
             f"{row['Density']:.4f}",
-            f"{row['Clustering Coefficient']:.4f}",
+            f"{row['Average clustering Coefficient']:.4f}",
             f"{row['Global Transitivity']:.4f}",
             f"{row['Avg Degree Centrality']:.4f}",
-            str(row['Avg Path Length']) if row['Avg Path Length'] != 'N/A' else 'N/A'
+            f"{row['Avg Path Length']:.4f}" if row['Avg Path Length'] != 'N/A' else 'N/A'
         ])
 
     # Create the table
@@ -818,13 +835,13 @@ def create_community_statistics_table(community: Graph):
     plt.axis('off')
     plt.title('Community Statistics', fontsize=16)
     plt.tight_layout()
-    plt.savefig('community_statistics_table.png', dpi=300, bbox_inches='tight')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
 
     return stats_df
 
 
-def visualize_communities(G: Graph, communities: list[Graph], file_path):
+def visualize_communities(G: Graph, communities: list[Graph], output_file):
     """Visualize communities with different colors using the force-directed layout"""
     print("Visualizing communities...")
     # Create a figure with a specific axis
@@ -884,7 +901,7 @@ def visualize_communities(G: Graph, communities: list[Graph], file_path):
     plt.title("Friendship Network Communities", fontsize=20)
     plt.axis('off')
     plt.tight_layout()
-    plt.savefig(file_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
 
     # Also create a more simplified version with just colors if there are many communities
@@ -899,6 +916,135 @@ def visualize_communities(G: Graph, communities: list[Graph], file_path):
     #    plt.tight_layout()
     #    plt.savefig('community_visualization_simple.png', dpi=300)
     #    plt.close()
+
+
+def create_shared_recipes_histogram(comm_shared_recipes_csv: str, output_file: str):
+    """Create histogram of shared recipes per community"""
+    print("Creating shared recipes histogram...")
+    rows = readCsv(comm_shared_recipes_csv)
+    community_recipe_counts = {int(row[0]): int(row[1]) for row in rows}
+    # Filter out communities with no shared recipes
+    filtered_counts = {k: v for k, v in community_recipe_counts.items() if v > 0}
+
+    # Sort communities by number of shared recipes
+    sorted_communities = sorted(filtered_counts.items(), key=lambda x: x[1], reverse=True)
+
+    # Prepare data for plotting
+    communities = [f"Comm {comm}" for comm, _ in sorted_communities]
+    recipe_counts = [count for _, count in sorted_communities]
+
+    # Create the plot
+    plt.figure(figsize=(14, 8))
+    bars = plt.bar(communities, recipe_counts, color='skyblue')
+
+    # Add data labels on top of each bar
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                f'{int(height)}', ha='center', va='bottom', rotation=0)
+
+    plt.title('Number of Shared Recipes by Community', fontsize=16)
+    plt.xlabel('Community', fontsize=14)
+    plt.ylabel('Number of Shared Recipes', fontsize=14)
+    plt.xticks(rotation=90)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+
+    # Save the figure
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+def create_top_recipes_charts(community_top_recipes_csv: str, output_path: str):
+    """Create charts for top recipes in each community"""
+    print("Creating top recipes charts...")
+    rows = readCsv(community_top_recipes_csv)
+
+    # comm_id: recipes
+    recipe_analysis = {}
+    comm_recipes = []
+    curr_comm_id = -1
+    if len(rows) > 0:
+        curr_comm_id = int(rows[0][0])
+    for i, row in enumerate(rows):
+        comm_id = int(row[0])
+        # When community changes set recipes to the previous community
+        if curr_comm_id != comm_id:
+            recipe_analysis[curr_comm_id] = comm_recipes.copy()
+            curr_comm_id = comm_id
+            comm_recipes = []
+        recipe_id = int(row[1])
+        share_count = int(row[2])
+        calorie_level = int(row[3])
+        steps_count = int(row[4])
+        ingredients_count = int(row[5])
+        recipe_info = {
+            "recipe_id" : recipe_id,
+            "recipe_name": f"Recipe {str(recipe_id)}",
+            "share_count": share_count,
+            "calorie_level": calorie_level,
+            "ingredient_count": ingredients_count,
+            "steps_count": steps_count,
+        }
+        comm_recipes.append(recipe_info)
+        # if this is the last recipe then set comm_recipes to the community
+        if i == len(rows) - 1:
+            recipe_analysis[curr_comm_id] = comm_recipes.copy()
+            comm_recipes = []
+
+
+    # For each community with analyzed recipes
+    for community_id, recipes in recipe_analysis.items():
+        if not recipes:
+            continue
+
+        # Sort recipes by share count
+        sorted_recipes = sorted(recipes, key=lambda x: x['share_count'], reverse=True)
+
+        # Create figure with 3 subplots (kcal, ingredients, steps)
+        fig, axes = plt.subplots(3, 1, figsize=(12, 18))
+
+        # Prepare data
+        recipe_names = [f"Recipe {r['recipe_id']}" for r in sorted_recipes]
+        share_counts = [r['share_count'] for r in sorted_recipes]
+        calorie_levels = [r['calorie_level'] if isinstance(r['calorie_level'], (int, float)) else 0 for r in sorted_recipes]
+        ingredient_counts = [r['ingredient_count'] for r in sorted_recipes]
+        steps_counts = [r['steps_count'] for r in sorted_recipes]
+
+        # Create color mapping based on share count
+        max_shares = max(share_counts)
+        colors = [plt.cm.YlOrRd(count / max_shares) for count in share_counts]
+
+        # Plot calorie levels
+        axes[0].bar(recipe_names, calorie_levels, color=colors)
+        axes[0].set_title(f'Calorie Levels of Top Recipes in Community {community_id}', fontsize=14)
+        axes[0].set_ylabel('Calorie Level', fontsize=12)
+        axes[0].set_xticklabels(recipe_names, rotation=45, ha='right')
+        axes[0].grid(axis='y', linestyle='--', alpha=0.7)
+
+        # Plot ingredient counts
+        axes[1].bar(recipe_names, ingredient_counts, color=colors)
+        axes[1].set_title(f'Number of Ingredients in Top Recipes of Community {community_id}', fontsize=14)
+        axes[1].set_ylabel('Ingredient Count', fontsize=12)
+        axes[1].set_xticklabels(recipe_names, rotation=45, ha='right')
+        axes[1].grid(axis='y', linestyle='--', alpha=0.7)
+
+        # Plot steps counts
+        axes[2].bar(recipe_names, steps_counts, color=colors)
+        axes[2].set_title(f'Number of Steps in Top Recipes of Community {community_id}', fontsize=14)
+        axes[2].set_ylabel('Steps Count', fontsize=12)
+        axes[2].set_xticklabels(recipe_names, rotation=45, ha='right')
+        axes[2].grid(axis='y', linestyle='--', alpha=0.7)
+
+        plt.tight_layout()
+        plt.savefig(f'{output_path}community_{community_id}_top_recipes.png', dpi=300, bbox_inches='tight')
+        plt.close()
+
+
+############################################################
+
+
+
 
 if __name__ == "__main__":
     # You can create your own file structure
@@ -916,126 +1062,151 @@ if __name__ == "__main__":
     figures = "../figures/"
 
     # 1)
-    #print("1) \n")
-    #createWeightedFriendShipNetwork(
-    #    pp_users,
-    #    datasets_new + "PP_weighted_friends.csv",
-    #    pickle_PP
-    #)
+    print("1 Create weighted graph and largest component) \n")
+    createWeightedFriendShipNetwork(
+        pp_users,
+        datasets_new + "PP_weighted_friends.csv",
+        pickle_PP
+    )
 
-    #G = readPkl(pickle_PP)
-    #G = nx.subgraph(G, largestComponent(G)).copy()
+    G = readPkl(pickle_PP)
+    G = nx.subgraph(G, largestComponent(G)).copy()
     # G is now connected graph
-    #writePkl(G, pickle_PP_con)
-    #printNodeEdgeAttributes(G)
+    writePkl(G, pickle_PP_con)
+    printNodeEdgeAttributes(G)
 
     # 2)
-    #print("2) \n")
-    #setCoordinates(G, 55)
-    #writePkl(G, pickle_PP_con)
-    #printNodeEdgeAttributes(G)
+    print("2 Calculate coordinates for weighted graph) \n")
+    setCoordinates(G, 55)
+    writePkl(G, pickle_PP_con)
+    printNodeEdgeAttributes(G)
 
     # 3)
-    #print("3) \n")
-    #setCategory(G)
-    #writePkl(G, pickle_PP_con)
-    #printNodeEdgeAttributes(G)
+    print("3 K-core decomposition categories) \n")
+    setCategory(G)
+    writePkl(G, pickle_PP_con)
+    printNodeEdgeAttributes(G)
 
     # 4)
-    #print("4) \n")
-    #createCommunities(G, datasets_pickle_communities, rng_seed=55)
+    print("4 Create communities) \n")
+    createCommunities(G, datasets_pickle_communities, rng_seed=55)
 
-    # 5.1 Communities)
-    #print("5.1) \n")
-    #modularity = calcLocalAndGlobalCommunities(G, pp_users, Path(datasets_pickle_communities))
+    # 5.1)
+    print("5.1 Calculate local, global attributes, and modularity for communities) \n")
+    modularity = calcLocalAndGlobalCommunities(G, pp_users, Path(datasets_pickle_communities))
 
-    # 5.2 Graph)
-    #print("5.2) \n")
-    #calcSetLocalNodeAttributes(G)
-    #writePkl(G, pickle_PP_con)
-    #printNodeEdgeAttributes(G)
-    #header = ["#nodes", "#edges", "avg_degree", "avg_path_length", "global_transitivity", "diameter", "modularity"]
-    #graph_properties = calcGlobal(G)
-    #writeCsv(datasets_new + "PP_weighted_friends_con_global.csv", [header, graph_properties + [modularity]])
+    # 5.2)
+    print("5.2 Calculate local node attributes for largest component) \n")
+    calcSetLocalNodeAttributes(G)
+    writePkl(G, pickle_PP_con)
+    printNodeEdgeAttributes(G)
+    header = ["#nodes", "#edges", "avg_degree", "avg_path_length", "global_transitivity", "diameter", "modularity"]
+    graph_properties = calcGlobal(G)
+    writeCsv(datasets_new + "PP_weighted_friends_con_global.csv", [header, graph_properties + [modularity]])
 
     # 6.1 shared recipes)
-    #print("6.1 Shared recipes) \n")
-    #items = createItemsFromCsv(pp_users)
-    #community_dir = Path(datasets_pickle_communities)
-    #header = ["file", "amount_shared_recipes", "top_recipe_ids", "top_recipe_shared_amounts"]
-    #data = []
-    #for file in community_dir.glob("*.pkl"):
-    #    comm = readPkl(str(file))
-    #    amount_shared_recipes, top10_recipes = analyze_shared_recipes(comm, items)
-    #    recipe_ids = []
-    #    recipe_shared_amounts = []
-    #    if top10_recipes:
-    #        recipe_ids, recipe_shared_amounts = zip(*top10_recipes)
-    #        # zip makes them tuples, turn to list
-    #        recipe_ids = list(recipe_ids)
-    #        recipe_shared_amounts = list(recipe_shared_amounts)
-    #    data.append([file.stem, amount_shared_recipes, recipe_ids, recipe_shared_amounts])
-    #writeCsv(datasets_pickle_communities + "community_shared_recipes.csv", [header] + data)
+    print("6.1 Shared recipes) \n")
+    items = createItemsFromCsv(pp_users)
+    community_dir = Path(datasets_pickle_communities)
+    header = ["file", "amount_shared_recipes", "top_recipe_ids", "top_recipe_shared_amounts"]
+    data = []
+    for file in community_dir.glob("*.pkl"):
+        comm = readPkl(str(file))
+        amount_shared_recipes, top10_recipes = analyze_shared_recipes(comm, items)
+        recipe_ids = []
+        recipe_shared_amounts = []
+        if top10_recipes:
+            recipe_ids, recipe_shared_amounts = zip(*top10_recipes)
+            # zip makes them tuples, turn to list
+            recipe_ids = list(recipe_ids)
+            recipe_shared_amounts = list(recipe_shared_amounts)
+        data.append([file.stem, amount_shared_recipes, recipe_ids, recipe_shared_amounts])
+    writeCsv(datasets_pickle_communities + "community_shared_recipes.csv", [header] + data)
 
     # 6.2 top10 recipes analysis)
-    #print("6.2 Shared top10 recipes analysis) \n")
-    #rows = readCsv(datasets_pickle_communities + "community_shared_recipes.csv")
-    #recipe_infos = createRecipesFromCsv(pp_recipes)
-    #header = ["file", "recipe_id", "share_count", "calorie_level", "steps_count", "ingredients_count"]
-    #data = []
-    #for row in rows:
-    #    recipes = ast.literal_eval(row[2])
-    #    share_counts = ast.literal_eval(row[3])
-    #    for i, recipe in enumerate(recipes):
-    #        calorie_level, step_count, ing_count = analyze_recipe(recipe, recipe_infos)
-    #        data_row = [row[0], recipe, share_counts[i], calorie_level, step_count, ing_count]
-    #        data.append(data_row)
-    #writeCsv(datasets_pickle_communities + "community_top_recipes.csv", [header] + data)
+    print("6.2 Shared top10 recipes analysis) \n")
+    rows = readCsv(datasets_pickle_communities + "community_shared_recipes.csv")
+    recipe_infos = createRecipesFromCsv(pp_recipes)
+    header = ["file", "recipe_id", "share_count", "calorie_level", "steps_count", "ingredients_count"]
+    data = []
+    for row in rows:
+        recipes = ast.literal_eval(row[2])
+        share_counts = ast.literal_eval(row[3])
+        for i, recipe in enumerate(recipes):
+            calorie_level, step_count, ing_count = analyze_recipe(recipe, recipe_infos)
+            data_row = [row[0], recipe, share_counts[i], calorie_level, step_count, ing_count]
+            data.append(data_row)
+    writeCsv(datasets_pickle_communities + "community_top_recipes.csv", [header] + data)
     
     # 7 Visualize connected network)
-    #visualize_network_bkp(G, figures + "ISNA25_RUE_pp_wcon.png")
+    print("7 Visualize connected network) \n")
+    visualize_network_bkp(G, figures + "ISNA25_RUE_pp_wcon.png")
 
     # 8 Distribution graph)
-    #plotHistogram(
-    #    list(nx.get_node_attributes(G, DEGREE_CEN_ATTR).values()),
-    #    figures + "histogram_degree.png",
-    #    "Degree centrality histogram",
-    #    "Degree centrality",
-    #    bins=50
-    #)
-    #plotHistogram(
-    #    list(nx.get_node_attributes(G, BETWEENNESS_ATTR).values()),
-    #    figures + "histogram_betweenness.png",
-    #    "Normalized betweenness centrality histogram",
-    #    "Normalized betweenness centrality",
-    #    bins=50
-    #)
-    #plotHistogram(
-    #    list(nx.get_node_attributes(G, CLOSENESS_ATTR).values()),
-    #    figures + "histogram_closeness.png",
-    #    "Normalized closeness centrality histogram",
-    #    "Normalized closeness centrality",
-    #    bins=50
-    #)
-    #plotHistogram(
-    #    list(nx.get_node_attributes(G, CLUSTER_ATTR).values()),
-    #    figures + "histogram_cluster.png",
-    #    "Clustering coefficient histogram",
-    #    "Clustering coefficients",
-    #    bins = 10
-    #)
+    print("8 Plot Distributions) \n")
+    plotHistogram(
+        list(nx.get_node_attributes(G, DEGREE_CEN_ATTR).values()),
+        figures + "histogram_degree.png",
+        "Degree centrality histogram",
+        "Degree centrality",
+        bins=50
+    )
+    plotHistogram(
+        list(nx.get_node_attributes(G, BETWEENNESS_ATTR).values()),
+        figures + "histogram_betweenness.png",
+        "Normalized betweenness centrality histogram",
+        "Normalized betweenness centrality",
+        bins=50
+    )
+    plotHistogram(
+        list(nx.get_node_attributes(G, CLOSENESS_ATTR).values()),
+        figures + "histogram_closeness.png",
+        "Normalized closeness centrality histogram",
+        "Normalized closeness centrality",
+        bins=50
+    )
+    plotHistogram(
+        list(nx.get_node_attributes(G, CLUSTER_ATTR).values()),
+        figures + "histogram_cluster.png",
+        "Clustering coefficient histogram",
+        "Clustering coefficients",
+        bins = 10
+    )
 
     # 9 Powerlaw graph)
-    #powerlawPlot(list(nx.get_node_attributes(G, DEGREE_CEN_ATTR).values()), figures + "powerlaw_degree.png", "Degree centrality")
-    #powerlawPlot(list(nx.get_node_attributes(G, BETWEENNESS_ATTR).values()), figures + "powerlaw_betweenness.png", "Betweenness centrality")
-    #powerlawPlot(list(nx.get_node_attributes(G, CLOSENESS_ATTR).values()), figures + "powerlaw_closeness.png", "Closeness centrality")
+    print("9 Plot powerlaws for largest component's centralities degree, betweenness, closeness) \n")
+    powerlawPlot(list(nx.get_node_attributes(G, DEGREE_CEN_ATTR).values()), figures + "powerlaw_degree.png", "Degree centrality")
+    powerlawPlot(list(nx.get_node_attributes(G, BETWEENNESS_ATTR).values()), figures + "powerlaw_betweenness.png", "Betweenness centrality")
+    powerlawPlot(list(nx.get_node_attributes(G, CLOSENESS_ATTR).values()), figures + "powerlaw_closeness.png", "Closeness centrality")
 
     # 10 Visualize communities on the largest component)
-    G = readPkl(pickle_PP_con)
+    print("10 Visualize communities on the largest component) \n")
     visualize_communities(
         G,
         readCommunities(Path(datasets_pickle_communities)),
         figures + "community_graph.png"
+    )
+
+    # 11 Community statistics)
+    print("11 Create table for community statistics) \n")
+    create_community_statistics_table(
+        readCommunities(Path(datasets_pickle_communities)),
+        datasets_pickle_communities,
+        figures + "weighted_community_tables.png"
+    )
+
+    # 12 shared recipes histogram)
+    print("12 Shared recipes histogram for each community) \n")
+    create_shared_recipes_histogram(
+        datasets_pickle_communities + "community_shared_recipes.csv",
+        figures + "weighted_shared_recipes_histogram.png"
+    )
+
+    # 13 top_recipe_charts)
+    print("13 Top recipes charts for each community) \n")
+    create_top_recipes_charts(
+        datasets_pickle_communities + "community_top_recipes.csv",
+        figures
     )
 
 
