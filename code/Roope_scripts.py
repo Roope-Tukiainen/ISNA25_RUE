@@ -772,7 +772,6 @@ def create_community_statistics_table(communities: list[Graph], community_dir: s
         num_edges = len(list(comm.edges()))
         density = (2*num_edges) / (num_nodes*(num_nodes-1))
         
-        avg_degree_centrality = (sum(list(nx.get_node_attributes(comm, DEGREE_CEN_ATTR).values()))) / num_nodes
         global_transitivity = -1
         avg_path_length = -1
         with open(f"{community_dir}{id}.csv") as file:
@@ -792,7 +791,6 @@ def create_community_statistics_table(communities: list[Graph], community_dir: s
             'Density': density,
             'Average clustering Coefficient': avg_cluster,
             'Global Transitivity': global_transitivity,
-            'Avg Degree Centrality': avg_degree_centrality,
             'Avg Path Length': avg_path_length
         }
         table_data.append(row)
@@ -814,7 +812,6 @@ def create_community_statistics_table(communities: list[Graph], community_dir: s
             f"{row['Density']:.4f}",
             f"{row['Average clustering Coefficient']:.4f}",
             f"{row['Global Transitivity']:.4f}",
-            f"{row['Avg Degree Centrality']:.4f}",
             f"{row['Avg Path Length']:.4f}" if row['Avg Path Length'] != 'N/A' else 'N/A'
         ])
 
