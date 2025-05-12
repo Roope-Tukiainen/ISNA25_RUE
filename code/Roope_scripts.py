@@ -693,6 +693,7 @@ def readCommunities(community_dir: Path):
     
 
 def printNodeEdgeAttributes(G: Graph):
+    nx.algorithms.community.girvan_newman
     print(f"Node attributes: {G.nodes[next(iter(G.nodes()))]}")
     print(f"Edge attributes: {G.edges[next(iter(G.edges()))]}")
 
@@ -771,7 +772,7 @@ def create_community_statistics_table(communities: list[Graph], community_dir: s
         num_edges = len(list(comm.edges()))
         density = (2*num_edges) / (num_nodes*(num_nodes-1))
         
-        avg_degree_centrality = -1
+        avg_degree_centrality = (sum(list(nx.get_node_attributes(comm, DEGREE_CEN_ATTR).values()))) / num_nodes
         global_transitivity = -1
         avg_path_length = -1
         with open(f"{community_dir}{id}.csv") as file:
@@ -779,7 +780,6 @@ def create_community_statistics_table(communities: list[Graph], community_dir: s
             #skip header
             next(reader)
             row = next(reader)
-            avg_degree_centrality = float(row[3])
             global_transitivity = float(row[5])
             avg_path_length = float(row[4])
 
@@ -1060,6 +1060,7 @@ if __name__ == "__main__":
     pickle_PP = datasets_pickle + "PP_weighted_friends.pkl"
     pickle_PP_con = datasets_pickle + "PP_weighted_friends_con.pkl"
     figures = "../figures/"
+    
 
     # 1)
     print("1 Create weighted graph and largest component) \n")
