@@ -800,7 +800,7 @@ def create_community_statistics_table(communities: list[Graph], community_dir: s
     stats_df.to_csv('uswah_community_statistics_table.csv', index=False)
 
     # Also create a visual table using matplotlib for the report
-    plt.figure(figsize=(12, len(table_data) * 0.5 + 2))
+    plt.figure(figsize=(12, len(table_data) * 0.3 + 2))
 
     # Display table
     cell_text = []
@@ -1037,7 +1037,6 @@ def create_top_recipes_charts(community_top_recipes_csv: str, output_path: str):
         plt.savefig(f'{output_path}community_{community_id}_top_recipes.png', dpi=300, bbox_inches='tight')
         plt.close()
 
-
 ############################################################
 
 
@@ -1058,7 +1057,6 @@ if __name__ == "__main__":
     pickle_PP_con = datasets_pickle + "PP_weighted_friends_con.pkl"
     figures = "../figures/"
     
-
     # 1)
     print("1 Create weighted graph and largest component) \n")
     createWeightedFriendShipNetwork(
